@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { useSalesforce } from '../auth/SalesforceContext';
 
@@ -23,7 +23,7 @@ export function Layout() {
   };
 
   return (
-    <div className="app-layout">
+    <div className="app">
       <header className="app-header">
         <div className="header-left">
           <button
@@ -34,8 +34,9 @@ export function Layout() {
           >
             {menuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <Link to="/" className="brand">
-            SF Permission Compare
+          <span className="logo">⚡</span>
+          <Link to="/">
+            <h1>SF Permission Compare</h1>
           </Link>
         </div>
 
@@ -55,12 +56,11 @@ export function Layout() {
         <div className="header-right">
           {session && (
             <>
-              <div className="org-badge" title={session.username}>
-                <span className="org-badge-name">{session.orgName}</span>
+              <span className="org-badge" title={session.username}>
+                {session.orgName}
                 <span className="org-badge-user">{session.displayName}</span>
-              </div>
-              <button type="button" className="btn btn-ghost" onClick={handleSwitchOrg}>
-                <LogOut size={16} />
+              </span>
+              <button type="button" className="btn-outline" onClick={handleSwitchOrg}>
                 Disconnect
               </button>
             </>

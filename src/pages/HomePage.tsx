@@ -36,21 +36,25 @@ export function HomePage() {
     <div className="home-page">
       <section className="hero-section">
         <h1>Salesforce Permission Comparison</h1>
-        <p>
+        <p className="subtitle" style={{ marginBottom: 0, textAlign: 'left' }}>
           {session
             ? `Connected to ${session.orgName} as ${session.displayName}. Select a comparison type below.`
             : 'Select a comparison type below to analyze permission differences in your org.'}
         </p>
       </section>
 
-      <div className="feature-grid">
-        {features.map((feature) => (
-          <Link key={feature.to} to={feature.to} className="feature-card card">
-            <feature.icon size={28} />
-            <h2>{feature.title}</h2>
-            <p>{feature.description}</p>
-          </Link>
-        ))}
+      <div className="card">
+        <h2>Comparison Types</h2>
+        <p className="hint">Click a type to start comparing permissions.</p>
+        <div className="type-grid">
+          {features.map((feature) => (
+            <Link key={feature.to} to={feature.to} className="type-card">
+              <feature.icon size={24} />
+              <h2>{feature.title}</h2>
+              <p>{feature.description}</p>
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -6,8 +6,12 @@ export function ProtectedRoute() {
 
   if (isLoading) {
     return (
-      <div className="callback-page">
-        <div className="card">Loading…</div>
+      <div className="app">
+        <div className="login-page">
+          <div className="login-card">
+            <div className="loading-spinner">Restoring session...</div>
+          </div>
+        </div>
       </div>
     );
   }

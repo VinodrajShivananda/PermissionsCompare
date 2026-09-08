@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { GitCompare, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useSalesforce } from '../auth/SalesforceContext';
 import { EntityPicker } from './EntityPicker';
 import { DiffTable } from './DiffTable';
@@ -82,11 +82,16 @@ export function ComparePage({
         <p>{description}</p>
       </div>
 
-      <div className="compare-form card">
+      {error && <div className="error-banner">{error}</div>}
+
+      <div className="card">
+        <h2>Select Entities</h2>
+        <p className="hint">Choose two items to compare their permissions.</p>
+
         {loadingEntities ? (
           <div className="loading-inline">
             <Loader2 className="spin" size={20} />
-            Loading options…
+            Loading options...
           </div>
         ) : (
           <div className="compare-selectors">
@@ -106,21 +111,18 @@ export function ComparePage({
             />
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn-primary"
               onClick={handleCompare}
               disabled={!entityAId || !entityBId || comparing || entityAId === entityBId}
             >
-              {comparing ? <Loader2 className="spin" size={18} /> : <GitCompare size={18} />}
-              {comparing ? 'Comparing…' : 'Compare'}
+              {comparing ? 'Comparing...' : 'Compare'}
             </button>
           </div>
         )}
 
         {entityAId && entityBId && entityAId === entityBId && (
-          <p className="form-hint error-text">Select two different entities to compare.</p>
+          <p className="error-text">Select two different entities to compare.</p>
         )}
-
-        {error && <div className="alert alert-error">{error}</div>}
       </div>
 
       {meta && (meta.assignmentsA || meta.assignmentsB) && (

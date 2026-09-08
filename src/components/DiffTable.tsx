@@ -56,7 +56,15 @@ export function DiffTable({ result }: DiffTableProps) {
   };
 
   return (
-    <div className="diff-panel">
+    <div className="card diff-panel">
+      <div className="results-header">
+        <h2>Differences ({result.summary.total})</h2>
+        <button type="button" className="btn-outline" onClick={handleExport}>
+          <Download size={16} />
+          Export CSV
+        </button>
+      </div>
+
       <div className="summary-cards">
         <div className="summary-card">
           <span className="summary-value">{result.summary.total}</span>
@@ -107,19 +115,13 @@ export function DiffTable({ result }: DiffTableProps) {
           ))}
         </select>
 
-        <button type="button" className="btn btn-secondary" onClick={handleExport}>
-          <Download size={16} />
-          Export CSV
-        </button>
       </div>
 
       {filtered.length === 0 ? (
-        <div className="empty-state card">
-          <p>No differences found matching your filters.</p>
-        </div>
+        <p className="no-results">No differences found matching your filters.</p>
       ) : (
-        <div className="table-wrapper card">
-          <table className="diff-table">
+        <div className="table-wrap">
+          <table>
             <thead>
               <tr>
                 <th>Category</th>
