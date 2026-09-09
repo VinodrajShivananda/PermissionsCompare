@@ -4,7 +4,9 @@ import type {
   NamedEntity,
   NormalizedPermission,
   PermissionBundle,
+  PermissionCategory,
   PermissionSource,
+  UserAssignmentGroups,
 } from '../types/permissions';
 
 interface PermissionSetRecord {
@@ -58,20 +60,16 @@ interface TabSettingRecord {
   Visibility: string;
 }
 
-interface UserRecord {
-  Id: string;
-  Name: string;
-  Username: string;
-  ProfileId: string;
-  Profile: { Name: string };
-}
-
-interface AssignmentRecord {
-  PermissionSetId: string;
-  PermissionSet: { Id: string; Name: string; Label: string };
-}
-
 interface PsgMemberRecord {
+  PermissionSetGroupId: string;
+  PermissionSetGroup: {
+    Id: string;
+    DeveloperName: string;
+    MasterLabel: string;
+  };
+}
+
+interface PermissionSetGroupAssignmentRecord {
   PermissionSetGroupId: string;
   PermissionSetGroup: {
     Id: string;
@@ -86,10 +84,75 @@ interface PsgComponentRecord {
   PermissionSet: { Id: string; Name: string; Label: string };
 }
 
+interface GroupMemberRecord {
+  GroupId: string;
+  Group: {
+    Id: string;
+    Name: string;
+    DeveloperName?: string;
+    Type: string;
+  };
+}
+
+const GROUP_TYPE_LABELS: Record<string, string> = {
+  Regular: 'Public Group',
+  Queue: 'Queue',
+  Role: 'Role',
+  RoleAndSubordinates: 'Role and Subordinates',
+  RoleAndSubordinatesInternal: 'Role and Subordinates (Internal)',
+  Organization: 'Organization',
+  AllCustomerPortal: 'Customer Portal',
+  Manager: 'Manager Group',
+  ManagerAndSubordinatesInternal: 'Manager and Subordinates (Internal)',
+  PortalRole: 'Portal Role',
+  PortalRoleAndSubordinates: 'Portal Role and Subordinates',
+  Partner: 'Partner',
+  Team: 'Team',
+  Territory: 'Territory',
+  TerritoryAndSubordinates: 'Territory and Subordinates',
+};
+
 function uniqueById(items: NamedEntity[]): NamedEntity[] {
   const map = new Map<string, NamedEntity>();
   items.forEach((item) => map.set(item.id, item));
   return Array.from(map.values());
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isUnsupportedFeatureError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return (
+    /is not supported/i.test(message) ||
+    /INVALID_TYPE/i.test(message) ||
+    /NOT_SUPPORTED/i.test(message) ||
+    /sObject type '/i.test(message)
+  );
+}
+
+function recordWarning(warnings: string[], feature: string, error: unknown): void {
+  if (isUnsupportedFeatureError(error)) {
+    warnings.push(`${feature} are not available in this org.`);
+    return;
+  }
+
+  warnings.push(`Could not load ${feature}: ${getErrorMessage(error)}`);
+}
+
+async function runOptionalLoad<T>(
+  warnings: string[],
+  feature: string,
+  loader: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await loader();
+  } catch (error) {
+    recordWarning(warnings, feature, error);
+    return fallback;
+  }
 }
 
 function formatObjectPerms(record: ObjectPermissionRecord): string {
@@ -144,6 +207,214 @@ function humanizePermissionField(field: string): string {
     .replace(/^Permissions/, '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+}
+
+function formatUserFieldValue(value: unknown): string {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  if (value == null || value === '') return 'None';
+  return String(value);
+}
+
+function getUserFieldValue(
+  record: Record<string, unknown>,
+  field: UserAttributeField,
+): string {
+  if (field.path.includes('.')) {
+    const relatedValue = getUserFieldValueByPath(record, field.path);
+    if (relatedValue !== 'None') {
+      return relatedValue;
+    }
+    return formatUserFieldValue(record[field.name]);
+  }
+
+  return formatUserFieldValue(record[field.name]);
+}
+
+function getUserFieldValueByPath(record: Record<string, unknown>, path: string): string {
+  const parts = path.split('.');
+  let current: unknown = record;
+
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') {
+      return 'None';
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+
+  return formatUserFieldValue(current);
+}
+
+interface UserAttributeField {
+  name: string;
+  label: string;
+  path: string;
+  selectParts: string[];
+}
+
+const NON_QUERYABLE_USER_FIELD_TYPES = new Set([
+  'address',
+  'location',
+  'base64',
+]);
+
+let cachedUserAttributeFields: UserAttributeField[] | null = null;
+
+async function getUserAttributeFields(
+  client: SalesforceClient,
+): Promise<UserAttributeField[]> {
+  if (cachedUserAttributeFields) {
+    return cachedUserAttributeFields;
+  }
+
+  const describe = await client.describe('User');
+  cachedUserAttributeFields = (describe.fields ?? [])
+    .filter((field) => !NON_QUERYABLE_USER_FIELD_TYPES.has(field.type))
+    .map((field) => {
+      if (field.type === 'reference' && field.relationshipName) {
+        return {
+          name: field.name,
+          label: field.label ?? field.name,
+          path: `${field.relationshipName}.Name`,
+          selectParts: [field.name, `${field.relationshipName}.Name`],
+        };
+      }
+
+      return {
+        name: field.name,
+        label: field.label ?? field.name,
+        path: field.name,
+        selectParts: [field.name],
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  return cachedUserAttributeFields;
+}
+
+function mergeUserRecords(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): void {
+  Object.entries(source).forEach(([key, value]) => {
+    if (key === 'attributes') {
+      return;
+    }
+
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      target[key] &&
+      typeof target[key] === 'object' &&
+      !Array.isArray(target[key])
+    ) {
+      mergeUserRecords(
+        target[key] as Record<string, unknown>,
+        value as Record<string, unknown>,
+      );
+      return;
+    }
+
+    target[key] = value;
+  });
+}
+
+async function queryUserSelectParts(
+  client: SalesforceClient,
+  userId: string,
+  selectParts: string[],
+): Promise<Record<string, unknown>> {
+  if (selectParts.length === 0) {
+    return {};
+  }
+
+  try {
+    const [record] = await client.query<Record<string, unknown>>(
+      `SELECT ${selectParts.join(', ')} FROM User WHERE Id = '${userId}'`,
+    );
+    return record ?? {};
+  } catch (error) {
+    if (selectParts.length === 1) {
+      return {};
+    }
+
+    const midpoint = Math.ceil(selectParts.length / 2);
+    const left = await queryUserSelectParts(
+      client,
+      userId,
+      selectParts.slice(0, midpoint),
+    );
+    const right = await queryUserSelectParts(
+      client,
+      userId,
+      selectParts.slice(midpoint),
+    );
+
+    mergeUserRecords(left, right);
+    return left;
+  }
+}
+
+function userSource(userId: string, userName: string): PermissionSource {
+  return {
+    sourceType: 'user',
+    sourceId: userId,
+    sourceName: userName,
+  };
+}
+
+function addUserAssignment(
+  map: Map<string, NormalizedPermission>,
+  category: PermissionCategory,
+  id: string,
+  label: string,
+  source: PermissionSource,
+): void {
+  addPermission(map, {
+    category,
+    key: `${category}:${id}`,
+    label,
+    value: 'Assigned',
+    granted: true,
+    source,
+  });
+}
+
+function emptyAssignmentGroups(): UserAssignmentGroups {
+  return {
+    permissionSets: [],
+    permissionSetGroups: [],
+    managedPackages: [],
+    groups: [],
+    queues: [],
+  };
+}
+
+function mergeAssignmentGroups(
+  target: UserAssignmentGroups,
+  source: UserAssignmentGroups,
+): UserAssignmentGroups {
+  return {
+    permissionSets: uniqueById([...target.permissionSets, ...source.permissionSets]),
+    permissionSetGroups: uniqueById([
+      ...target.permissionSetGroups,
+      ...source.permissionSetGroups,
+    ]),
+    managedPackages: uniqueById([...target.managedPackages, ...source.managedPackages]),
+    groups: uniqueById([...target.groups, ...source.groups]),
+    queues: uniqueById([...target.queues, ...source.queues]),
+  };
+}
+
+function flattenAssignmentGroups(groups: UserAssignmentGroups): NamedEntity[] {
+  return uniqueById([
+    ...groups.permissionSets,
+    ...groups.permissionSetGroups,
+    ...groups.managedPackages,
+    ...groups.groups,
+    ...groups.queues,
+  ]);
 }
 
 let cachedPermissionFields: { name: string; label: string }[] | null = null;
@@ -344,86 +615,143 @@ async function fetchPermissionSetData(
   });
 }
 
-async function resolvePermissionSetsForUser(
+async function queryPermissionSetGroupAssignments(
   client: SalesforceClient,
   userId: string,
-): Promise<{ sources: PermissionSource[]; assignments: NamedEntity[] }> {
-  const [user] = await client.query<UserRecord>(
-    `SELECT Id, Name, Username, ProfileId, Profile.Name FROM User WHERE Id = '${userId}'`,
-  );
-
-  if (!user) {
-    throw new Error('User not found');
-  }
-
-  const sources: PermissionSource[] = [];
-  const assignments: NamedEntity[] = [];
-
-  const [profilePs] = await client.query<PermissionSetRecord>(
-    `SELECT Id, Name, Label FROM PermissionSet WHERE IsOwnedByProfile = true AND ProfileId = '${user.ProfileId}'`,
-  );
-
-  if (profilePs) {
-    sources.push({
-      sourceType: 'profile',
-      sourceId: profilePs.Id,
-      sourceName: user.Profile.Name,
-    });
-    assignments.push({
-      id: profilePs.Id,
-      name: user.Profile.Name,
-      label: user.Profile.Name,
-      type: 'Profile',
-    });
-  }
-
-  const psAssignments = await client.query<AssignmentRecord>(
-    `SELECT PermissionSetId, PermissionSet.Id, PermissionSet.Name, PermissionSet.Label FROM PermissionSetAssignment WHERE AssigneeId = '${userId}' AND PermissionSet.IsOwnedByProfile = false`,
-  );
-
-  psAssignments.forEach((a) => {
-    sources.push({
-      sourceType: 'permissionSet',
-      sourceId: a.PermissionSet.Id,
-      sourceName: a.PermissionSet.Label || a.PermissionSet.Name,
-    });
-    assignments.push({
-      id: a.PermissionSet.Id,
-      name: a.PermissionSet.Name,
-      label: a.PermissionSet.Label,
-      type: 'Permission Set',
-    });
-  });
-
-  const psgMembers = await client.query<PsgMemberRecord>(
-    `SELECT PermissionSetGroupId, PermissionSetGroup.Id, PermissionSetGroup.DeveloperName, PermissionSetGroup.MasterLabel FROM PermissionSetGroupMember WHERE AssigneeId = '${userId}'`,
-  );
-
-  for (const member of psgMembers) {
-    const psgName =
-      member.PermissionSetGroup.MasterLabel ||
-      member.PermissionSetGroup.DeveloperName;
-    assignments.push({
-      id: member.PermissionSetGroup.Id,
-      name: member.PermissionSetGroup.DeveloperName,
-      label: psgName,
-      type: 'Permission Set Group',
-    });
-
-    const components = await client.query<PsgComponentRecord>(
-      `SELECT PermissionSetGroupId, PermissionSetId, PermissionSet.Id, PermissionSet.Name, PermissionSet.Label FROM PermissionSetGroupComponent WHERE PermissionSetGroupId = '${member.PermissionSetGroupId}'`,
+): Promise<NamedEntity[]> {
+  try {
+    const fromAssignments = await client.query<PermissionSetGroupAssignmentRecord>(
+      `SELECT PermissionSetGroupId, PermissionSetGroup.Id, PermissionSetGroup.DeveloperName, PermissionSetGroup.MasterLabel FROM PermissionSetAssignment WHERE AssigneeId = '${userId}' AND PermissionSetGroupId != null`,
     );
 
-    components.forEach((c) => {
-      sources.push({
-        sourceType: 'permissionSetGroup',
-        sourceId: c.PermissionSet.Id,
-        sourceName: `${psgName} → ${c.PermissionSet.Label || c.PermissionSet.Name}`,
-      });
-    });
+    if (fromAssignments.length > 0) {
+      return fromAssignments.map((record) => ({
+        id: record.PermissionSetGroup?.Id || record.PermissionSetGroupId,
+        name: record.PermissionSetGroup?.DeveloperName || record.PermissionSetGroupId,
+        label:
+          record.PermissionSetGroup?.MasterLabel ||
+          record.PermissionSetGroup?.DeveloperName ||
+          record.PermissionSetGroupId,
+        type: 'Permission Set Group',
+      }));
+    }
+  } catch {
+    // Fall back to PermissionSetGroupMember in orgs where that object exists.
   }
 
-  return { sources, assignments: uniqueById(assignments) };
+  try {
+    const fromMembers = await client.query<PsgMemberRecord>(
+      `SELECT PermissionSetGroupId, PermissionSetGroup.Id, PermissionSetGroup.DeveloperName, PermissionSetGroup.MasterLabel FROM PermissionSetGroupMember WHERE AssigneeId = '${userId}'`,
+    );
+
+    return fromMembers.map((record) => ({
+      id: record.PermissionSetGroup.Id,
+      name: record.PermissionSetGroup.DeveloperName,
+      label:
+        record.PermissionSetGroup.MasterLabel ||
+        record.PermissionSetGroup.DeveloperName,
+      type: 'Permission Set Group',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function loadPermissionSetGroupAssignments(
+  client: SalesforceClient,
+  userId: string,
+  map: Map<string, NormalizedPermission>,
+  source: PermissionSource,
+): Promise<UserAssignmentGroups> {
+  const groups = emptyAssignmentGroups();
+  const assignments = await queryPermissionSetGroupAssignments(client, userId);
+
+  uniqueById(assignments).forEach((item) => {
+    groups.permissionSetGroups.push(item);
+    addUserAssignment(
+      map,
+      'permissionSetGroup',
+      item.id,
+      item.label || item.name,
+      source,
+    );
+  });
+
+  return groups;
+}
+
+async function loadUserAttributes(
+  client: SalesforceClient,
+  userId: string,
+  userName: string,
+  map: Map<string, NormalizedPermission>,
+  warnings: string[],
+): Promise<void> {
+  const attributeFields = await getUserAttributeFields(client);
+  const selectParts = Array.from(
+    new Set(attributeFields.flatMap((field) => field.selectParts)),
+  );
+  const user: Record<string, unknown> = {};
+
+  for (const chunk of chunkArray(selectParts, 75)) {
+    const chunkRecord = await queryUserSelectParts(client, userId, chunk);
+    mergeUserRecords(user, chunkRecord);
+  }
+
+  if (Object.keys(user).length === 0) {
+    recordWarning(warnings, 'User attributes', new Error('No User fields could be loaded'));
+    return;
+  }
+
+  const source = userSource(userId, userName);
+
+  attributeFields.forEach((field) => {
+    addPermission(map, {
+      category: 'userAttribute',
+      key: `userAttribute:${field.name}`,
+      label: field.label,
+      value: getUserFieldValue(user, field),
+      granted: true,
+      source,
+    });
+  });
+}
+
+async function loadUserGroupMemberships(
+  client: SalesforceClient,
+  userId: string,
+  userName: string,
+  map: Map<string, NormalizedPermission>,
+): Promise<UserAssignmentGroups> {
+  const members = await client.query<GroupMemberRecord>(
+    `SELECT GroupId, Group.Id, Group.Name, Group.DeveloperName, Group.Type FROM GroupMember WHERE UserOrGroupId = '${userId}' ORDER BY Group.Type, Group.Name`,
+  );
+
+  const source = userSource(userId, userName);
+  const groups = emptyAssignmentGroups();
+
+  members.forEach((member) => {
+    const label = member.Group.Name || member.Group.DeveloperName || member.GroupId;
+    const item: NamedEntity = {
+      id: member.GroupId,
+      name: member.Group.DeveloperName || member.Group.Name,
+      label,
+      type: GROUP_TYPE_LABELS[member.Group.Type] ?? member.Group.Type,
+    };
+
+    if (member.Group.Type === 'Queue') {
+      groups.queues.push(item);
+      addUserAssignment(map, 'queue', member.GroupId, label, source);
+      return;
+    }
+
+    if (member.Group.Type === 'Regular') {
+      groups.groups.push(item);
+      addUserAssignment(map, 'group', member.GroupId, label, source);
+    }
+  });
+
+  return groups;
 }
 
 export async function listUsers(client: SalesforceClient): Promise<NamedEntity[]> {
@@ -478,12 +806,37 @@ export async function loadUserPermissions(
   userId: string,
   userName: string,
 ): Promise<PermissionBundle> {
-  const { sources, assignments } = await resolvePermissionSetsForUser(client, userId);
+  const warnings: string[] = [];
   const map = new Map<string, NormalizedPermission>();
+  const source = userSource(userId, userName);
 
-  for (const source of sources) {
-    await fetchPermissionSetData(client, source.sourceId, source, map);
+  await loadUserAttributes(client, userId, userName, map, warnings);
+
+  const attributeCount = Array.from(map.values()).filter(
+    (permission) => permission.category === 'userAttribute',
+  ).length;
+  if (attributeCount === 0) {
+    warnings.push('No user attributes could be loaded.');
   }
+
+  const psgAssignments = await loadPermissionSetGroupAssignments(
+    client,
+    userId,
+    map,
+    source,
+  );
+
+  const groupMemberships = await runOptionalLoad(
+    warnings,
+    'Public groups and queues',
+    () => loadUserGroupMemberships(client, userId, userName, map),
+    emptyAssignmentGroups(),
+  );
+
+  const mergedAssignmentGroups = mergeAssignmentGroups(
+    psgAssignments,
+    groupMemberships,
+  );
 
   return {
     entityId: userId,
@@ -492,7 +845,9 @@ export async function loadUserPermissions(
     permissions: Array.from(map.values()).sort((a, b) =>
       a.category.localeCompare(b.category) || a.label.localeCompare(b.label),
     ),
-    assignments,
+    assignments: flattenAssignmentGroups(mergedAssignmentGroups),
+    assignmentGroups: mergedAssignmentGroups,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
 
@@ -558,26 +913,22 @@ export async function loadPermissionSetGroupPermissions(
   groupName: string,
 ): Promise<PermissionBundle> {
   const components = await client.query<PsgComponentRecord>(
-    `SELECT PermissionSetGroupId, PermissionSetId, PermissionSet.Id, PermissionSet.Name, PermissionSet.Label FROM PermissionSetGroupComponent WHERE PermissionSetGroupId = '${groupId}'`,
+    `SELECT PermissionSetGroupId, PermissionSetId, PermissionSet.Id, PermissionSet.Name, PermissionSet.Label FROM PermissionSetGroupComponent WHERE PermissionSetGroupId = '${groupId}' ORDER BY PermissionSet.Label, PermissionSet.Name`,
   );
 
   const groupMembers: NamedEntity[] = components.map((c) => ({
     id: c.PermissionSet.Id,
     name: c.PermissionSet.Name,
-    label: c.PermissionSet.Label,
+    label: c.PermissionSet.Label || c.PermissionSet.Name,
     type: 'Permission Set',
   }));
 
   const map = new Map<string, NormalizedPermission>();
-
-  for (const component of components) {
-    const source: PermissionSource = {
-      sourceType: 'permissionSetGroup',
-      sourceId: component.PermissionSet.Id,
-      sourceName: `${groupName} → ${component.PermissionSet.Label || component.PermissionSet.Name}`,
-    };
-    await fetchPermissionSetData(client, component.PermissionSet.Id, source, map);
-  }
+  const source: PermissionSource = {
+    sourceType: 'permissionSetGroup',
+    sourceId: groupId,
+    sourceName: groupName,
+  };
 
   groupMembers.forEach((member) => {
     addPermission(map, {
@@ -586,11 +937,7 @@ export async function loadPermissionSetGroupPermissions(
       label: member.label || member.name,
       value: 'Included',
       granted: true,
-      source: {
-        sourceType: 'permissionSetGroup',
-        sourceId: groupId,
-        sourceName: groupName,
-      },
+      source,
     });
   });
 
@@ -598,9 +945,7 @@ export async function loadPermissionSetGroupPermissions(
     entityId: groupId,
     entityName: groupName,
     entityType: 'permissionSetGroup',
-    permissions: Array.from(map.values()).sort((a, b) =>
-      a.category.localeCompare(b.category) || a.label.localeCompare(b.label),
-    ),
+    permissions: Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)),
     groupMembers,
   };
 }

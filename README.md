@@ -2,7 +2,7 @@
 
 A React app to compare Salesforce permissions across users, profiles, permission sets, and permission set groups.
 
-Authentication matches the **SF Dependency Analyzer** pattern: SOAP username/password login through a local backend proxy (no Connected App, no browser scripts).
+Authentication uses SOAP username/password login through a local backend proxy (no Connected App, no browser scripts).
 
 ## Features
 

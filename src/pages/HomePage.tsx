@@ -23,7 +23,7 @@ const features = [
   },
   {
     title: 'Compare Permission Set Groups',
-    description: 'Compare member sets and combined permission footprint.',
+    description: 'Compare which permission sets are included in each group.',
     icon: User,
     to: '/compare/permission-set-groups',
   },

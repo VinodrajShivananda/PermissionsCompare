@@ -5,6 +5,7 @@ import { EntityPicker } from './EntityPicker';
 import { DiffTable } from './DiffTable';
 import { compareBundles } from '../services/compareService';
 import type { NamedEntity, PermissionBundle, CompareResult } from '../types/permissions';
+import type { CompareSection } from '../constants/userCompareSections';
 
 interface ComparePageProps {
   title: string;
@@ -14,6 +15,9 @@ interface ComparePageProps {
     client: import('../api/salesforceClient').SalesforceClient,
     entity: NamedEntity,
   ) => Promise<PermissionBundle>;
+  includeSameCategories?: import('../types/permissions').PermissionCategory[];
+  compareSections?: CompareSection[];
+  alwaysShowEmptySections?: boolean;
 }
 
 export function ComparePage({
@@ -21,6 +25,9 @@ export function ComparePage({
   description,
   loadEntities,
   loadBundle,
+  includeSameCategories,
+  compareSections,
+  alwaysShowEmptySections,
 }: ComparePageProps) {
   const { client } = useSalesforce();
   const [entities, setEntities] = useState<NamedEntity[]>([]);
@@ -30,7 +37,7 @@ export function ComparePage({
   const [comparing, setComparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CompareResult | null>(null);
-  const [meta, setMeta] = useState<{ assignmentsA?: NamedEntity[]; assignmentsB?: NamedEntity[]; groupMembersA?: NamedEntity[]; groupMembersB?: NamedEntity[] } | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     if (!client) return;
@@ -54,6 +61,7 @@ export function ComparePage({
     setComparing(true);
     setError(null);
     setResult(null);
+    setWarnings([]);
 
     try {
       const [bundleA, bundleB] = await Promise.all([
@@ -61,13 +69,16 @@ export function ComparePage({
         loadBundle(client, entityB),
       ]);
 
-      setResult(compareBundles(bundleA, bundleB));
-      setMeta({
-        assignmentsA: bundleA.assignments,
-        assignmentsB: bundleB.assignments,
-        groupMembersA: bundleA.groupMembers,
-        groupMembersB: bundleB.groupMembers,
-      });
+      setResult(
+        compareBundles(bundleA, bundleB, {
+          includeSameCategories,
+        }),
+      );
+      setWarnings(
+        Array.from(
+          new Set([...(bundleA.warnings ?? []), ...(bundleB.warnings ?? [])]),
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Comparison failed');
     } finally {
@@ -83,6 +94,17 @@ export function ComparePage({
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+
+      {warnings.length > 0 && (
+        <div className="warning-banner">
+          <strong>Some data could not be loaded. Available assignments and differences are shown below.</strong>
+          <ul>
+            {warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card">
         <h2>Select Entities</h2>
@@ -125,57 +147,13 @@ export function ComparePage({
         )}
       </div>
 
-      {meta && (meta.assignmentsA || meta.assignmentsB) && (
-        <div className="assignments-grid">
-          {meta.assignmentsA && (
-            <div className="card">
-              <h3>Assignments — {result?.entityA.name}</h3>
-              <ul>
-                {meta.assignmentsA.map((a) => (
-                  <li key={a.id}><strong>{a.type}:</strong> {a.label || a.name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {meta.assignmentsB && (
-            <div className="card">
-              <h3>Assignments — {result?.entityB.name}</h3>
-              <ul>
-                {meta.assignmentsB.map((a) => (
-                  <li key={a.id}><strong>{a.type}:</strong> {a.label || a.name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+      {result && (
+        <DiffTable
+          result={result}
+          sections={compareSections}
+          alwaysShowEmptySections={alwaysShowEmptySections}
+        />
       )}
-
-      {meta && (meta.groupMembersA || meta.groupMembersB) && (
-        <div className="assignments-grid">
-          {meta.groupMembersA && (
-            <div className="card">
-              <h3>Group Members — {result?.entityA.name}</h3>
-              <ul>
-                {meta.groupMembersA.map((m) => (
-                  <li key={m.id}>{m.label || m.name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {meta.groupMembersB && (
-            <div className="card">
-              <h3>Group Members — {result?.entityB.name}</h3>
-              <ul>
-                {meta.groupMembersB.map((m) => (
-                  <li key={m.id}>{m.label || m.name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {result && <DiffTable result={result} />}
     </div>
   );
 }

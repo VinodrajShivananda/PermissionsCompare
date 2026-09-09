@@ -4,6 +4,7 @@ import type {
   PermissionBundle,
   PermissionDiff,
   DiffStatus,
+  PermissionCategory,
 } from '../types/permissions';
 
 function sourceLabels(permission?: NormalizedPermission): string[] {
@@ -48,6 +49,7 @@ export function formatDiffStatus(
 export function compareBundles(
   bundleA: PermissionBundle,
   bundleB: PermissionBundle,
+  options?: { includeSameCategories?: PermissionCategory[] },
 ): CompareResult {
   const mapA = new Map(bundleA.permissions.map((p) => [p.key, p]));
   const mapB = new Map(bundleB.permissions.map((p) => [p.key, p]));
@@ -59,10 +61,14 @@ export function compareBundles(
     const permA = mapA.get(key);
     const permB = mapB.get(key);
     const status = determineStatus(permA, permB);
-
-    if (status === 'same') return;
-
     const reference = permA ?? permB!;
+
+    if (
+      status === 'same' &&
+      !options?.includeSameCategories?.includes(reference.category)
+    ) {
+      return;
+    }
 
     diffs.push({
       category: reference.category,
@@ -83,8 +89,8 @@ export function compareBundles(
   );
 
   const summary = {
-    total: diffs.length,
-    same: 0,
+    total: diffs.filter((d) => d.status !== 'same').length,
+    same: diffs.filter((d) => d.status === 'same').length,
     onlyA: diffs.filter((d) => d.status === 'onlyA').length,
     onlyB: diffs.filter((d) => d.status === 'onlyB').length,
     different: diffs.filter((d) => d.status === 'different').length,

@@ -155,6 +155,9 @@ interface DescribeField {
   name: string;
   type: string;
   label?: string;
+  relationshipName?: string;
+  calculated?: boolean;
+  deprecatedAndHidden?: boolean;
 }
 
 interface DescribeResponse {

@@ -5,7 +5,15 @@ export type PermissionCategory =
   | 'tab'
   | 'setup'
   | 'assignment'
-  | 'groupMember';
+  | 'groupMember'
+  | 'userAttribute'
+  | 'groupMembership'
+  | 'permissionSet'
+  | 'permissionSetGroup'
+  | 'managedPackage'
+  | 'group'
+  | 'queue'
+  | 'permissionSetLicense';
 
 export type DiffStatus = 'same' | 'onlyA' | 'onlyB' | 'different';
 
@@ -32,7 +40,7 @@ export interface NamedEntity {
 }
 
 export interface PermissionSource {
-  sourceType: 'profile' | 'permissionSet' | 'permissionSetGroup';
+  sourceType: 'profile' | 'permissionSet' | 'permissionSetGroup' | 'user';
   sourceId: string;
   sourceName: string;
 }
@@ -46,13 +54,23 @@ export interface NormalizedPermission {
   sources: PermissionSource[];
 }
 
+export interface UserAssignmentGroups {
+  permissionSets: NamedEntity[];
+  permissionSetGroups: NamedEntity[];
+  managedPackages: NamedEntity[];
+  groups: NamedEntity[];
+  queues: NamedEntity[];
+}
+
 export interface PermissionBundle {
   entityId: string;
   entityName: string;
   entityType: 'user' | 'profile' | 'permissionSet' | 'permissionSetGroup';
   permissions: NormalizedPermission[];
   assignments?: NamedEntity[];
+  assignmentGroups?: UserAssignmentGroups;
   groupMembers?: NamedEntity[];
+  warnings?: string[];
 }
 
 export interface PermissionDiff {

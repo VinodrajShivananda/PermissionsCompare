@@ -109,9 +109,30 @@ export function LoginPage() {
           <div className="setup-help">
             <h3>How this works</h3>
             <p>
-              Authentication uses the same SOAP login flow as the SF Dependency Analyzer.
-              Your credentials are sent to the local backend, which logs into Salesforce and
-              proxies API calls. No Connected App or browser scripts are required.
+              Connect to your org, pick two items, and review side-by-side differences.
+              Export results to CSV for audits, tickets, or change documentation.
+            </p>
+            <ul className="setup-help-list">
+              <li>
+                <strong>Compare users</strong> — spot differences in user attributes,
+                permission set group assignments, public groups, and queues.
+              </li>
+              <li>
+                <strong>Compare profiles</strong> — diff object, field, system, tab, and setup
+                permissions between two profiles.
+              </li>
+              <li>
+                <strong>Compare permission sets</strong> — find permission gaps or drift between
+                two permission sets.
+              </li>
+              <li>
+                <strong>Compare permission set groups</strong> — see which permission sets are
+                included in each group.
+              </li>
+            </ul>
+            <p className="setup-help-note">
+              Authentication uses SOAP login through a local backend proxy. No Connected App or
+              browser scripts are required.
             </p>
           </div>
         </div>

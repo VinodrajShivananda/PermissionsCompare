@@ -1,4 +1,5 @@
 import { ComparePage } from '../components/ComparePage';
+import { PSG_COMPARE_SECTIONS } from '../constants/userCompareSections';
 import {
   listPermissionSetGroups,
   loadPermissionSetGroupPermissions,
@@ -8,11 +9,13 @@ export function ComparePermissionSetGroupsPage() {
   return (
     <ComparePage
       title="Compare Permission Set Groups"
-      description="Compare member permission sets and combined permissions between two permission set groups."
+      description="Compare which permission sets are included in each permission set group."
       loadEntities={listPermissionSetGroups}
       loadBundle={(client, entity) =>
         loadPermissionSetGroupPermissions(client, entity.id, entity.label || entity.name)
       }
+      compareSections={PSG_COMPARE_SECTIONS}
+      includeSameCategories={['groupMember']}
     />
   );
 }
