@@ -45,7 +45,7 @@ export function HomePage() {
 
       <div className="card">
         <h2>Comparison Types</h2>
-        <p className="hint">Click a type to start comparing permissions.</p>
+        <p className="hint">Click a type to start comparing permissions across multiple items.</p>
         <div className="type-grid">
           {features.map((feature) => (
             <Link key={feature.to} to={feature.to} className="type-card">

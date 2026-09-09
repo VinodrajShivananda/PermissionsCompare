@@ -109,7 +109,7 @@ export function LoginPage() {
           <div className="setup-help">
             <h3>How this works</h3>
             <p>
-              Connect to your org, pick two items, and review side-by-side differences.
+              Connect to your org, add two or more items, and review side-by-side differences.
               Export results to CSV for audits, tickets, or change documentation.
             </p>
             <ul className="setup-help-list">

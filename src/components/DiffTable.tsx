@@ -23,7 +23,7 @@ const DEFAULT_CATEGORIES: PermissionCategory[] = [
   'groupMember',
 ];
 
-const STATUS_OPTIONS: DiffStatus[] = ['onlyA', 'onlyB', 'different', 'same'];
+const STATUS_OPTIONS: DiffStatus[] = ['mixed', 'same'];
 
 interface DiffTableProps {
   result: CompareResult;
@@ -55,18 +55,13 @@ function filterDiffs(
 
 function DiffTableBody({
   diffs,
-  entityAName,
-  entityBName,
+  entities,
   showCategory = false,
 }: {
   diffs: PermissionDiff[];
-  entityAName: string;
-  entityBName: string;
+  entities: CompareResult['entities'];
   showCategory?: boolean;
 }) {
-  const formatStatus = (status: DiffStatus) =>
-    formatDiffStatus(status, entityAName, entityBName);
-
   if (diffs.length === 0) {
     return <p className="no-results">No items found matching your filters.</p>;
   }
@@ -79,8 +74,9 @@ function DiffTableBody({
             {showCategory && <th>Category</th>}
             <th>Item</th>
             <th>Status</th>
-            <th>{entityAName}</th>
-            <th>{entityBName}</th>
+            {entities.map((entity) => (
+              <th key={entity.id}>{entity.name}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -92,11 +88,12 @@ function DiffTableBody({
               <td>{diff.label}</td>
               <td>
                 <span className={`status-badge ${diff.status}`}>
-                  {formatStatus(diff.status)}
+                  {formatDiffStatus(diff.status)}
                 </span>
               </td>
-              <td>{diff.valueA}</td>
-              <td>{diff.valueB}</td>
+              {entities.map((entity) => (
+                <td key={entity.id}>{diff.values[entity.id] ?? '—'}</td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -137,7 +134,7 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `permission-compare-${result.entityA.name}-vs-${result.entityB.name}.csv`;
+    link.download = `permission-compare-${result.entities.map((entity) => entity.name).join('-vs-')}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -145,7 +142,10 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
   return (
     <div className="card diff-panel">
       <div className="results-header">
-        <h2>Comparison Results ({result.summary.total} differences)</h2>
+        <h2>
+          Comparison Results ({result.summary.total} difference
+          {result.summary.total === 1 ? '' : 's'})
+        </h2>
         <button type="button" className="btn-outline" onClick={handleExport}>
           <Download size={16} />
           Export CSV
@@ -155,19 +155,19 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
       <div className="summary-cards">
         <div className="summary-card">
           <span className="summary-value">{result.summary.total}</span>
-          <span className="summary-label">Total Differences</span>
+          <span className="summary-label">Mixed Rows</span>
         </div>
-        <div className="summary-card only-a">
-          <span className="summary-value">{result.summary.onlyA}</span>
-          <span className="summary-label">Only {result.entityA.name}</span>
+        <div className="summary-card mixed">
+          <span className="summary-value">{result.summary.mixed}</span>
+          <span className="summary-label">Values Differ</span>
         </div>
-        <div className="summary-card only-b">
-          <span className="summary-value">{result.summary.onlyB}</span>
-          <span className="summary-label">Only {result.entityB.name}</span>
+        <div className="summary-card same">
+          <span className="summary-value">{result.summary.same}</span>
+          <span className="summary-label">Same Across All</span>
         </div>
-        <div className="summary-card different">
-          <span className="summary-value">{result.summary.different}</span>
-          <span className="summary-label">Different Values</span>
+        <div className="summary-card">
+          <span className="summary-value">{result.entities.length}</span>
+          <span className="summary-label">Items Compared</span>
         </div>
       </div>
 
@@ -178,13 +178,13 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
             type="text"
             placeholder="Search…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
           />
         </div>
 
         <select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value as PermissionCategory | 'all')}
+          onChange={(event) => setCategoryFilter(event.target.value as PermissionCategory | 'all')}
         >
           <option value="all">All categories</option>
           {categories.map((cat) => (
@@ -194,12 +194,12 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as DiffStatus | 'all')}
+          onChange={(event) => setStatusFilter(event.target.value as DiffStatus | 'all')}
         >
           <option value="all">All statuses</option>
           {STATUS_OPTIONS.map((status) => (
             <option key={status} value={status}>
-              {formatDiffStatus(status, result.entityA.name, result.entityB.name)}
+              {formatDiffStatus(status)}
             </option>
           ))}
         </select>
@@ -226,8 +226,7 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
                 ) : (
                   <DiffTableBody
                     diffs={sectionDiffs}
-                    entityAName={result.entityA.name}
-                    entityBName={result.entityB.name}
+                    entities={result.entities}
                   />
                 )}
               </section>
@@ -240,8 +239,7 @@ export function DiffTable({ result, sections, alwaysShowEmptySections }: DiffTab
       ) : (
         <DiffTableBody
           diffs={filtered}
-          entityAName={result.entityA.name}
-          entityBName={result.entityB.name}
+          entities={result.entities}
           showCategory
         />
       )}

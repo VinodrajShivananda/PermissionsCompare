@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useSalesforce } from '../auth/SalesforceContext';
-import { EntityPicker } from './EntityPicker';
+import { MultiEntityPicker } from './MultiEntityPicker';
 import { DiffTable } from './DiffTable';
 import { compareBundles } from '../services/compareService';
 import type { NamedEntity, PermissionBundle, CompareResult } from '../types/permissions';
@@ -31,8 +31,7 @@ export function ComparePage({
 }: ComparePageProps) {
   const { client } = useSalesforce();
   const [entities, setEntities] = useState<NamedEntity[]>([]);
-  const [entityAId, setEntityAId] = useState('');
-  const [entityBId, setEntityBId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(true);
   const [comparing, setComparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +49,18 @@ export function ComparePage({
       .finally(() => setLoadingEntities(false));
   }, [client, loadEntities]);
 
+  const canCompare = selectedIds.length >= 2;
+
   const handleCompare = async () => {
-    if (!client || !entityAId || !entityBId) return;
+    if (!client || !canCompare) return;
 
-    const entityA = entities.find((e) => e.id === entityAId);
-    const entityB = entities.find((e) => e.id === entityBId);
+    const selectedEntities = selectedIds
+      .map((id) => entities.find((entity) => entity.id === id))
+      .filter((entity): entity is NamedEntity => entity !== undefined);
 
-    if (!entityA || !entityB) return;
+    if (selectedEntities.length !== selectedIds.length) {
+      return;
+    }
 
     setComparing(true);
     setError(null);
@@ -64,19 +68,18 @@ export function ComparePage({
     setWarnings([]);
 
     try {
-      const [bundleA, bundleB] = await Promise.all([
-        loadBundle(client, entityA),
-        loadBundle(client, entityB),
-      ]);
+      const bundles = await Promise.all(
+        selectedEntities.map((entity) => loadBundle(client, entity)),
+      );
 
       setResult(
-        compareBundles(bundleA, bundleB, {
+        compareBundles(bundles, {
           includeSameCategories,
         }),
       );
       setWarnings(
         Array.from(
-          new Set([...(bundleA.warnings ?? []), ...(bundleB.warnings ?? [])]),
+          new Set(bundles.flatMap((bundle) => bundle.warnings ?? [])),
         ),
       );
     } catch (err) {
@@ -108,7 +111,7 @@ export function ComparePage({
 
       <div className="card">
         <h2>Select Entities</h2>
-        <p className="hint">Choose two items to compare their permissions.</p>
+        <p className="hint">Add two or more items to compare side by side.</p>
 
         {loadingEntities ? (
           <div className="loading-inline">
@@ -117,33 +120,26 @@ export function ComparePage({
           </div>
         ) : (
           <div className="compare-selectors">
-            <EntityPicker
-              label="Entity A"
+            <MultiEntityPicker
+              label="Items to compare"
               entities={entities}
-              value={entityAId}
-              onChange={setEntityAId}
-              disabled={comparing}
-            />
-            <EntityPicker
-              label="Entity B"
-              entities={entities}
-              value={entityBId}
-              onChange={setEntityBId}
+              selectedIds={selectedIds}
+              onChange={setSelectedIds}
               disabled={comparing}
             />
             <button
               type="button"
               className="btn-primary"
               onClick={handleCompare}
-              disabled={!entityAId || !entityBId || comparing || entityAId === entityBId}
+              disabled={!canCompare || comparing}
             >
               {comparing ? 'Comparing...' : 'Compare'}
             </button>
           </div>
         )}
 
-        {entityAId && entityBId && entityAId === entityBId && (
-          <p className="error-text">Select two different entities to compare.</p>
+        {selectedIds.length === 1 && (
+          <p className="error-text">Add at least one more item to compare.</p>
         )}
       </div>
 

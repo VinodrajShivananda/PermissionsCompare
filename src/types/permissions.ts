@@ -15,7 +15,7 @@ export type PermissionCategory =
   | 'queue'
   | 'permissionSetLicense';
 
-export type DiffStatus = 'same' | 'onlyA' | 'onlyB' | 'different';
+export type DiffStatus = 'same' | 'mixed';
 
 export interface SalesforceSession {
   id: string;
@@ -78,21 +78,16 @@ export interface PermissionDiff {
   key: string;
   label: string;
   status: DiffStatus;
-  valueA: string;
-  valueB: string;
-  sourcesA: string[];
-  sourcesB: string[];
+  values: Record<string, string>;
+  sources: Record<string, string[]>;
 }
 
 export interface CompareResult {
-  entityA: { id: string; name: string };
-  entityB: { id: string; name: string };
+  entities: { id: string; name: string }[];
   diffs: PermissionDiff[];
   summary: {
     total: number;
     same: number;
-    onlyA: number;
-    onlyB: number;
-    different: number;
+    mixed: number;
   };
 }

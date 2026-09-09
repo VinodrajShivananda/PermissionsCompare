@@ -12,56 +12,57 @@ function sourceLabels(permission?: NormalizedPermission): string[] {
   return permission.sources.map((s) => s.sourceName);
 }
 
-function determineStatus(
-  permA?: NormalizedPermission,
-  permB?: NormalizedPermission,
-): DiffStatus {
-  if (!permA && permB) return 'onlyB';
-  if (permA && !permB) return 'onlyA';
-  if (!permA && !permB) return 'same';
-
-  if (permA!.granted === permB!.granted && permA!.value === permB!.value) {
-    return 'same';
-  }
-
-  return 'different';
+function determineStatus(values: string[]): DiffStatus {
+  const uniqueValues = new Set(values);
+  return uniqueValues.size <= 1 ? 'same' : 'mixed';
 }
 
-export function formatDiffStatus(
-  status: DiffStatus,
-  entityAName: string,
-  entityBName: string,
-): string {
+export function formatDiffStatus(status: DiffStatus): string {
   switch (status) {
-    case 'onlyA':
-      return entityAName;
-    case 'onlyB':
-      return entityBName;
-    case 'different':
-      return 'Different';
     case 'same':
       return 'Same';
+    case 'mixed':
+      return 'Mixed';
     default:
       return status;
   }
 }
 
 export function compareBundles(
-  bundleA: PermissionBundle,
-  bundleB: PermissionBundle,
+  bundles: PermissionBundle[],
   options?: { includeSameCategories?: PermissionCategory[] },
 ): CompareResult {
-  const mapA = new Map(bundleA.permissions.map((p) => [p.key, p]));
-  const mapB = new Map(bundleB.permissions.map((p) => [p.key, p]));
-  const allKeys = new Set([...mapA.keys(), ...mapB.keys()]);
+  const entities = bundles.map((bundle) => ({
+    id: bundle.entityId,
+    name: bundle.entityName,
+  }));
+  const maps = bundles.map(
+    (bundle) => new Map(bundle.permissions.map((permission) => [permission.key, permission])),
+  );
+  const allKeys = new Set<string>();
+  maps.forEach((map) => {
+    map.forEach((_, key) => allKeys.add(key));
+  });
 
   const diffs: PermissionDiff[] = [];
 
   allKeys.forEach((key) => {
-    const permA = mapA.get(key);
-    const permB = mapB.get(key);
-    const status = determineStatus(permA, permB);
-    const reference = permA ?? permB!;
+    const perms = maps.map((map) => map.get(key));
+    const reference = perms.find((perm) => perm !== undefined);
+    if (!reference) {
+      return;
+    }
+
+    const values: Record<string, string> = {};
+    const sources: Record<string, string[]> = {};
+
+    bundles.forEach((bundle, index) => {
+      const perm = maps[index].get(key);
+      values[bundle.entityId] = perm?.value ?? '—';
+      sources[bundle.entityId] = sourceLabels(perm);
+    });
+
+    const status = determineStatus(Object.values(values));
 
     if (
       status === 'same' &&
@@ -75,10 +76,8 @@ export function compareBundles(
       key,
       label: reference.label,
       status,
-      valueA: permA?.value ?? '—',
-      valueB: permB?.value ?? '—',
-      sourcesA: sourceLabels(permA),
-      sourcesB: sourceLabels(permB),
+      values,
+      sources,
     });
   });
 
@@ -89,16 +88,13 @@ export function compareBundles(
   );
 
   const summary = {
-    total: diffs.filter((d) => d.status !== 'same').length,
-    same: diffs.filter((d) => d.status === 'same').length,
-    onlyA: diffs.filter((d) => d.status === 'onlyA').length,
-    onlyB: diffs.filter((d) => d.status === 'onlyB').length,
-    different: diffs.filter((d) => d.status === 'different').length,
+    total: diffs.filter((diff) => diff.status === 'mixed').length,
+    same: diffs.filter((diff) => diff.status === 'same').length,
+    mixed: diffs.filter((diff) => diff.status === 'mixed').length,
   };
 
   return {
-    entityA: { id: bundleA.entityId, name: bundleA.entityName },
-    entityB: { id: bundleB.entityId, name: bundleB.entityName },
+    entities,
     diffs,
     summary,
   };
@@ -109,16 +105,14 @@ export function exportDiffsToCsv(result: CompareResult): string {
     'Category',
     'Permission',
     'Status',
-    `${result.entityA.name} Value`,
-    `${result.entityB.name} Value`,
+    ...result.entities.map((entity) => entity.name),
   ];
 
-  const rows = result.diffs.map((d) => [
-    d.category,
-    d.label,
-    formatDiffStatus(d.status, result.entityA.name, result.entityB.name),
-    d.valueA,
-    d.valueB,
+  const rows = result.diffs.map((diff) => [
+    diff.category,
+    diff.label,
+    formatDiffStatus(diff.status),
+    ...result.entities.map((entity) => diff.values[entity.id] ?? '—'),
   ]);
 
   const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;

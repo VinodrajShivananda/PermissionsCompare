@@ -334,13 +334,70 @@ code {
 .compare-selectors {
   display: flex;
   gap: 16px;
-  align-items: flex-end;
+  align-items: flex-start;
   flex-wrap: wrap;
 }
 
-.compare-selectors .form-group { flex: 1; min-width: 200px; margin-bottom: 0; }
+.compare-selectors .form-group,
+.compare-selectors .multi-entity-picker {
+  flex: 1;
+  min-width: 280px;
+  margin-bottom: 0;
+}
 
-.compare-selectors .btn-primary { height: fit-content; margin-bottom: 2px; }
+.compare-selectors .btn-primary {
+  height: fit-content;
+  margin-top: 30px;
+  flex-shrink: 0;
+}
+
+.multi-entity-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.multi-entity-add select { flex: 1; }
+
+.multi-entity-add .btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.selected-entities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.entity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #edf2f7;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.entity-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #718096;
+  cursor: pointer;
+}
+
+.entity-chip-remove:hover:not(:disabled) { color: #c53030; }
+
+.entity-chip-remove:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .loading-inline {
   display: flex;
@@ -452,6 +509,8 @@ code {
 .summary-card.only-a .summary-value { color: #4299e1; }
 .summary-card.only-b .summary-value { color: #805ad5; }
 .summary-card.different .summary-value { color: #dd6b20; }
+.summary-card.mixed .summary-value { color: #dd6b20; }
+.summary-card.same .summary-value { color: #276749; }
 
 .diff-toolbar {
   display: flex;
@@ -544,6 +603,7 @@ tr:hover { background: #f7fafc; }
 .status-badge.onlyA { background: #ebf8ff; color: #2b6cb0; }
 .status-badge.onlyB { background: #faf5ff; color: #6b46c1; }
 .status-badge.different { background: #fffaf0; color: #c05621; }
+.status-badge.mixed { background: #fffaf0; color: #c05621; }
 .status-badge.same { background: #f0fff4; color: #276749; }
 
 .no-results,
@@ -619,7 +679,7 @@ tr:hover { background: #f7fafc; }
 
   .compare-selectors { flex-direction: column; align-items: stretch; }
 
-  .compare-selectors .btn-primary { width: 100%; }
+  .compare-selectors .btn-primary { width: 100%; margin-top: 0; }
 
   .diff-table { min-width: 720px; }
 }
