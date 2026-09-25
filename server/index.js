@@ -9,18 +9,7 @@ const REST_API_VERSION = 'v62.0';
 app.use(
   cors({
     origin(origin, callback) {
-      const deployedOrigin = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : undefined;
-      const configuredOrigin = process.env.APP_ORIGIN;
-      const isAllowedOrigin =
-        !origin ||
-        /^http:\/\/localhost:\d+$/.test(origin) ||
-        origin === deployedOrigin ||
-        origin === configuredOrigin ||
-        /^https:\/\/[^/]+\.vercel\.app$/.test(origin);
-
-      if (isAllowedOrigin) {
+      if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
         callback(null, true);
         return;
       }
@@ -30,10 +19,6 @@ app.use(
   }),
 );
 app.use(express.json());
-
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
-});
 
 function escapeXml(value) {
   return value
@@ -202,10 +187,6 @@ app.post('/api/describe-global', async (req, res) => {
   }
 });
 
-export default app;
-
-if (process.env.VERCEL !== '1') {
-  app.listen(PORT, () => {
-    console.log(`Salesforce proxy running on http://localhost:${PORT}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`Salesforce proxy running on http://localhost:${PORT}`);
+});

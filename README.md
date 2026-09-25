@@ -31,14 +31,6 @@ This starts:
 
 Open http://localhost:5173 and sign in with your Salesforce credentials.
 
-To verify the backend is running independently, open http://localhost:3001/health. It should return `{"status":"ok"}`.
-
-## Deploy to Vercel
-
-Import this repository into Vercel with the default Vite settings. Vercel will use `npm run build` and serve the generated `dist` folder. The included `api/index.js` function serves the Salesforce proxy, so no separate backend deployment or port 3001 is needed in production.
-
-After deployment, verify `https://your-project.vercel.app/health` returns `{"status":"ok"}`. If you use a custom domain, set the `APP_ORIGIN` environment variable to that full origin, for example `https://permissions.example.com`.
-
 ## Login
 
 1. Choose **Production** or **Sandbox**
